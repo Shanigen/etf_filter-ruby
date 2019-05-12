@@ -1,6 +1,7 @@
 require 'nokogiri'
 require 'pp'
 require 'open-uri'
+require 'date'
 
 URL_OVERVIEW = 'https://www.justetf.com/uk/etf-profile.html?isin=%s&tab=overview'
                .freeze
@@ -27,7 +28,7 @@ def scrape_etf_overview(response)
   etf[:fund_size_category] = fs_category == '1' ? 'low_cap' : fs_category == '2' ? 'mid_cap' : 'high_cap'
   etf[:replication] = response.at('//tr[1]/td/span[1]').text
   etf[:currency] = response.at('//table[@class="table"]/tbody/tr[4]/td[2]').text
-  etf[:inception_date] = response.at('//table[@class="table"]/tbody/tr[7]/td[2]').text
+  etf[:inception_date] = Time.parse(response.at('//table[@class="table"]/tbody/tr[7]/td[2]').text)
   etf[:ter] = response.at('//div[6]/div[2]/div[1]/div[1]/div[1]/div[1]').text
   etf[:distribution_policy] = response.at('//div[6]/div[2]/table/tbody/tr[1]/td[2]').text
   etf[:fund_domicile] = response.at('//div[6]/div[2]/table/tbody/tr[3]/td[2]').text
@@ -66,16 +67,19 @@ def suitable(etf)
   return false if ['mid cap', 'high cap'].include? [:fund_size_category]
 
   return false unless etf[:replication].match('[pP]hysical')
+   # at least 3 years old
+  return false unless ((Time.now - etf[:inception_date]) / 86400).round >= 3 * 365
 
-  # at least 3 years old
   true
 end
 
 begin
-  File.open(ARGV[0], 'r') do |f|
-    f.each_line do |line|
-      etf = scrape_etf(line.strip)
-      pp etf if suitable(etf)
+  File.open('suitable-etf.txt', 'w') do |output_file|
+    File.open(ARGV[0], 'r') do |input_file|
+      input_file.each_line do |line|
+        etf = scrape_etf(line.strip)
+        output_file.write(etf) if suitable(etf)
+      end
     end
   end
 rescue StandardError => e
